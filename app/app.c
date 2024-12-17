@@ -7,6 +7,7 @@
 #include "crc.h"
 #include "flasher_sdo.h"
 #include "fw_header.h"
+#include "led_drv.h"
 #include "lss_cb.h"
 #include "platform.h"
 #include "prof.h"
@@ -20,6 +21,8 @@ int gsts = -10;
 
 #define SYSTICK_IN_US (168000000 / 1000000)
 #define SYSTICK_IN_MS (168000000 / 1000)
+
+#define LED_DECIM 0.005f
 
 #define NMT_CONTROL                  \
 	(CO_NMT_STARTUP_TO_OPERATIONAL | \
@@ -35,9 +38,13 @@ CO_t *CO = NULL;
 volatile uint32_t system_time_ms = 0;
 static int32_t prev_systick = 0;
 
-uint8_t g_active_can_node_id = 127;		  /* Copied from CO_pending_can_node_id in the communication reset section */
-static uint8_t pending_can_node_id = 127; /* read from dip switches or nonvolatile memory, configurable by LSS slave */
+uint8_t g_active_can_node_id = CO_LSS_NODE_ID_ASSIGNMENT;		/* Copied from CO_pending_can_node_id in the communication reset section */
+static uint8_t pending_can_node_id = CO_LSS_NODE_ID_ASSIGNMENT; /* read from dip switches or nonvolatile memory, configurable by LSS slave */
+// uint8_t g_active_can_node_id = 100;		  /* Copied from CO_pending_can_node_id in the communication reset section */
+// static uint8_t pending_can_node_id = 100; /* read from dip switches or nonvolatile memory, configurable by LSS slave */
 static uint16_t pending_can_baud = 500;	  /* read from dip switches or nonvolatile memory, configurable by LSS slave */
+
+static float led_amnt[2] = {0};
 
 config_entry_t g_device_config[] = {
 	{"can_id", sizeof(pending_can_node_id), 0, &pending_can_node_id},
@@ -55,8 +62,7 @@ void delay_ms(volatile uint32_t delay_ms)
 	for(;;)
 	{
 		start += (uint32_t)prof_mark(&mark_prev);
-		if(start >= time_limit)
-			return;
+		if(start >= time_limit) return;
 	}
 }
 
@@ -68,19 +74,7 @@ void main(void)
 
 	prof_init();
 	platform_watchdog_init();
-
-	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA |
-							   RCC_AHB1Periph_GPIOB |
-							   RCC_AHB1Periph_GPIOC |
-							   RCC_AHB1Periph_GPIOD,
-						   ENABLE);
-
-	GPIO_InitTypeDef GPIO_InitStructure;
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_7; // DCDC_FAULT, SNS_KEY
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
-	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
-	GPIO_Init(GPIOC, &GPIO_InitStructure);
+	platform_init();
 
 	fw_header_check_all();
 
@@ -158,15 +152,33 @@ void main(void)
 				uint32_t diff_ms = (time_diff_systick + remain_systick_ms_prev) / (SYSTICK_IN_MS);
 				remain_systick_ms_prev = (time_diff_systick + remain_systick_ms_prev) % SYSTICK_IN_MS;
 
-				system_time_ms += diff_ms;
-
 				platform_watchdog_reset();
+				system_time_ms += diff_ms;
 
 				CO_CANinterrupt(CO->CANmodule);
 				reset = CO_process(CO, false, diff_us, NULL);
 				lss_cb_poll(&lss_obj, diff_us);
 
 				usb_poll(diff_ms);
+				led_drv_poll(diff_ms);
+
+				if(!usb_is_configured())
+				{
+					led_drv_set_led(LED_ERR, LED_MODE_FLASH_2_5HZ);
+				}
+				else
+				{
+					led_drv_set_led(LED_ERR, LED_MODE_STROB_05HZ);
+				}
+				led_drv_set_led_manual(LED_TX, led_amnt[LED_TX]);
+				led_drv_set_led_manual(LED_RX, led_amnt[LED_RX]);
+				if(diff_ms)
+				{
+					led_amnt[LED_TX] -= diff_ms * LED_DECIM;
+					led_amnt[LED_RX] -= diff_ms * LED_DECIM;
+					if(led_amnt[LED_TX] < 0) led_amnt[LED_TX] = 0;
+					if(led_amnt[LED_RX] < 0) led_amnt[LED_RX] = 0;
+				}
 			}
 		}
 	}
@@ -180,5 +192,23 @@ PLATFORM_RESET:
 
 void usbd_cdc_rx(const uint8_t *data, uint32_t size)
 {
-	// console_cb(data, size);
+	if(size == sizeof(can_msg_t))
+	{
+		can_msg_t msg;
+		memcpy(&msg, data, size);
+		co_drv_send_ex(CAN1, msg.id.std, msg.data, msg.DLC, msg.IDE, msg.RTR);
+	}
+	else
+		usbd_cdc_push_data((uint8_t[]){0xFF}, 1);
+}
+
+void can_drv_txed(void)
+{
+	led_amnt[LED_TX] = 1.0f;
+}
+
+void can_drv_rxed(can_msg_t *msg)
+{
+	usbd_cdc_push_data((uint8_t *)msg, sizeof(can_msg_t));
+	led_amnt[LED_RX] = 1.0f;
 }

@@ -5,11 +5,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #include "stm32f4xx.h"
 
 extern uint32_t prev_primask;
@@ -118,12 +113,8 @@ typedef struct
 		rxNew = NULL;        \
 	}
 
-int co_drv_send_ex(void *dev, uint32_t ident, uint8_t *data, uint32_t dlc);
+int co_drv_send_ex(void *dev, uint32_t ident, uint8_t *data, uint32_t dlc, bool is_ext, bool is_rtr);
 
 void CO_CANinterrupt(CO_CANmodule_t *CANmodule);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
 
 #endif // CO_DRIVER_TARGET_H_

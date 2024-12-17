@@ -34,7 +34,8 @@ CO_ReturnError_t CO_CANmodule_init(
 	CANmodule->txSize = txSize;
 	CANmodule->CANerrorStatus = 0;
 	CANmodule->CANnormal = false;
-	CANmodule->useCANrxFilters = (rxSize <= CAN_FILT_NUM) ? true : false;
+	// CANmodule->useCANrxFilters = (rxSize <= CAN_FILT_NUM) ? true : false;
+	CANmodule->useCANrxFilters = false;
 	CANmodule->bufferInhibitFlag = false;
 	CANmodule->firstCANtxMessage = true;
 	CANmodule->CANtxCount = 0U;
@@ -148,12 +149,11 @@ CO_CANtx_t *CO_CANtxBufferInit(
 	return buffer;
 }
 
-int co_drv_send_ex(void *dev, uint32_t ident, uint8_t *data, uint32_t dlc)
+int co_drv_send_ex(void *dev, uint32_t ident, uint8_t *data, uint32_t dlc, bool is_ext, bool is_rtr)
 {
 	CO_LOCK_CAN_SEND(CANmodule);
-	int sts = can_drv_tx(dev, ident << 21, dlc, data);
+	int sts = can_drv_tx_ex(dev, ident << 21, dlc, data, is_ext, is_rtr);
 	CO_UNLOCK_CAN_SEND(CANmodule);
-
 	return sts;
 }
 
@@ -305,11 +305,20 @@ void CO_CANinterrupt(CO_CANmodule_t *CANmodule)
 
 			uint16_t index = can_drv_get_rx_filter_index(dev); /* get index of the received message here. Or something similar */
 
+			can_msg_t rcv_msg2 = {.DLC = can_drv_get_rx_dlc(dev), .ts = 0};
+			uint32_t rir = can_drv_get_rx_ident(dev);
+			rcv_msg2.RTR = (rir & (1 << 1)) ? 1 : 0;
+			rcv_msg2.IDE = (rir & (1 << 2)) ? 1 : 0;
+			rcv_msg2.IDE ? (rcv_msg2.id.ext = (rir >> 3)) : (rcv_msg2.id.std = (rir >> 21));
+
 			CO_CANrx_t rcv_msg = {
 				.ident = can_drv_get_rx_ident(dev),
 				.DLC = can_drv_get_rx_dlc(dev)};
 			can_drv_get_rx_data(dev, rcv_msg.data);
+			can_drv_get_rx_data(dev, rcv_msg2.data);
 			can_drv_release_rx_message(dev);
+
+			can_drv_rxed(&rcv_msg2);
 
 			if(CANmodule->useCANrxFilters)
 			{

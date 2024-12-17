@@ -208,7 +208,49 @@ bool can_drv_tx(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d)
 								  ((uint32_t)d[4]));
 
 	dev->sTxMailBox[txmb].TIR |= CAN_TI0R_TXRQ;
+	can_drv_txed();
+	return true;
+}
 
+bool can_drv_tx_ex(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d, bool is_ext, bool is_rtr)
+{
+	uint32_t txmb;
+	if((dev->TSR & CAN_TSR_TME0) == CAN_TSR_TME0)
+	{
+		txmb = 0U;
+	}
+	else if((dev->TSR & CAN_TSR_TME1) == CAN_TSR_TME1)
+	{
+		txmb = 1U;
+	}
+	else if((dev->TSR & CAN_TSR_TME2) == CAN_TSR_TME2)
+	{
+		txmb = 2U;
+	}
+	else
+	{
+		return false;
+	}
+
+	dev->sTxMailBox[txmb].TIR &= CAN_TI0R_TXRQ;
+	dev->sTxMailBox[txmb].TIR = (is_rtr ? (1 << 1) : 0) |
+								(is_ext ? (ident << 3) | (1 << 2)
+										: (ident << 21));
+
+	dev->sTxMailBox[txmb].TDTR &= 0xFFFFFFF0U;
+	dev->sTxMailBox[txmb].TDTR |= dlc;
+
+	dev->sTxMailBox[txmb].TDLR = (((uint32_t)d[3] << 24U) |
+								  ((uint32_t)d[2] << 16U) |
+								  ((uint32_t)d[1] << 8U) |
+								  ((uint32_t)d[0]));
+	dev->sTxMailBox[txmb].TDHR = (((uint32_t)d[7] << 24U) |
+								  ((uint32_t)d[6] << 16U) |
+								  ((uint32_t)d[5] << 8U) |
+								  ((uint32_t)d[4]));
+
+	dev->sTxMailBox[txmb].TIR |= CAN_TI0R_TXRQ;
+	can_drv_txed();
 	return true;
 }
 

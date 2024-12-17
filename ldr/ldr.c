@@ -2,12 +2,12 @@
 #include "CO_driver_app.h"
 #include "CO_driver_storage.h"
 #include "OD.h"
-#include "adc.h"
 #include "can_driver.h"
 #include "config_system.h"
 #include "crc.h"
 #include "flasher_sdo.h"
 #include "fw_header.h"
+#include "led_drv.h"
 #include "lss_cb.h"
 #include "platform.h"
 #include "prof.h"
@@ -26,14 +26,15 @@
 	 CO_ERR_REG_GENERIC_ERR |        \
 	 CO_ERR_REG_COMMUNICATION)
 
+volatile uint32_t system_time_ms = 0;
 bool g_stay_in_boot = false;
 uint32_t g_uid[3];
 
 CO_t *CO = NULL;
 
-uint8_t g_active_can_node_id = 127;		  // CO_LSS_NODE_ID_ASSIGNMENT;			/* Copied from CO_pending_can_node_id in the communication reset section */
-static uint8_t pending_can_node_id = 127; // CO_LSS_NODE_ID_ASSIGNMENT; /* read from dip switches or nonvolatile memory, configurable by LSS slave */
-static uint16_t pending_can_baud = 500;	  /* read from dip switches or nonvolatile memory, configurable by LSS slave */
+uint8_t g_active_can_node_id = CO_LSS_NODE_ID_ASSIGNMENT;		/* Copied from CO_pending_can_node_id in the communication reset section */
+static uint8_t pending_can_node_id = CO_LSS_NODE_ID_ASSIGNMENT; /* read from dip switches or nonvolatile memory, configurable by LSS slave */
+static uint16_t pending_can_baud = 250;							/* read from dip switches or nonvolatile memory, configurable by LSS slave */
 
 static volatile uint32_t boot_delay = BOOT_DELAY;
 static int32_t prev_systick = 0;
@@ -53,8 +54,7 @@ void delay_ms(volatile uint32_t delay_ms)
 	for(;;)
 	{
 		start += (uint32_t)prof_mark(&mark_prev);
-		if(start >= time_limit)
-			return;
+		if(start >= time_limit) return;
 	}
 }
 
@@ -66,6 +66,7 @@ void main(void)
 
 	prof_init();
 	platform_watchdog_init();
+	platform_init();
 
 	fw_header_check_all();
 
@@ -148,6 +149,7 @@ void main(void)
 				lss_cb_poll(&lss_obj, diff_us);
 
 				platform_watchdog_reset();
+				system_time_ms += diff_ms;
 
 				if(!boot_delay &&
 				   !g_stay_in_boot &&
@@ -159,6 +161,22 @@ void main(void)
 				boot_delay = boot_delay >= diff_ms ? boot_delay - diff_ms : 0;
 
 				usb_poll(diff_ms);
+				led_drv_poll(diff_ms);
+
+				if(led_startup_sample())
+				{
+					static uint32_t led_cnt = 10000;
+					led_cnt += diff_ms;
+					if(led_cnt > 120)
+					{
+						led_cnt = 0;
+						static uint8_t phase = 10;
+						if(++phase > 3) phase = 0;
+						led_drv_set_led(LED_ERR, phase == 0 ? LED_MODE_ON : LED_MODE_OFF);
+						led_drv_set_led(LED_RX, phase == 1 || phase == 3 ? LED_MODE_ON : LED_MODE_OFF);
+						led_drv_set_led(LED_TX, phase == 2 ? LED_MODE_ON : LED_MODE_OFF);
+					}
+				}
 			}
 		}
 	PLATFORM_RESET:
@@ -168,3 +186,6 @@ void main(void)
 		platform_reset();
 	}
 }
+
+void can_drv_txed(void) {}
+void can_drv_rxed(can_msg_t *msg) {}
