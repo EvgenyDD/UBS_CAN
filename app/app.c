@@ -12,10 +12,13 @@
 #include "platform.h"
 #include "prof.h"
 #include "ret_mem.h"
+#include "slcan.h"
 #include "usb_hw.h"
 #include "usbd_core_cdc.h"
 #include <stdio.h>
 #include <string.h>
+
+#define USE_SLCAN
 
 int gsts = -10;
 
@@ -34,6 +37,7 @@ int gsts = -10;
 bool g_stay_in_boot = false;
 uint32_t g_uid[3];
 CO_t *CO = NULL;
+uint16_t frame_cnt_ms;
 
 volatile uint32_t system_time_ms = 0;
 static int32_t prev_systick = 0;
@@ -42,7 +46,7 @@ uint8_t g_active_can_node_id = CO_LSS_NODE_ID_ASSIGNMENT;		/* Copied from CO_pen
 static uint8_t pending_can_node_id = CO_LSS_NODE_ID_ASSIGNMENT; /* read from dip switches or nonvolatile memory, configurable by LSS slave */
 // uint8_t g_active_can_node_id = 100;		  /* Copied from CO_pending_can_node_id in the communication reset section */
 // static uint8_t pending_can_node_id = 100; /* read from dip switches or nonvolatile memory, configurable by LSS slave */
-static uint16_t pending_can_baud = 500;	  /* read from dip switches or nonvolatile memory, configurable by LSS slave */
+static uint16_t pending_can_baud = 500; /* read from dip switches or nonvolatile memory, configurable by LSS slave */
 
 static float led_amnt[2] = {0};
 
@@ -154,6 +158,7 @@ void main(void)
 
 				platform_watchdog_reset();
 				system_time_ms += diff_ms;
+				frame_cnt_ms += diff_ms;
 
 				CO_CANinterrupt(CO->CANmodule);
 				reset = CO_process(CO, false, diff_us, NULL);
@@ -192,14 +197,17 @@ PLATFORM_RESET:
 
 void usbd_cdc_rx(const uint8_t *data, uint32_t size)
 {
+#ifdef USE_SLCAN
+	const char *ret = slcan_parse(CO->CANmodule->CANptr, data, size);
+	if(ret) usbd_cdc_push_data((const uint8_t *)ret, strlen(ret));
+#else
 	if(size == sizeof(can_msg_t))
 	{
 		can_msg_t msg;
 		memcpy(&msg, data, size);
 		co_drv_send_ex(CAN1, msg.id.std, msg.data, msg.DLC, msg.IDE, msg.RTR);
 	}
-	else
-		usbd_cdc_push_data((uint8_t[]){0xFF}, 1);
+#endif
 }
 
 void can_drv_txed(void)
@@ -209,6 +217,13 @@ void can_drv_txed(void)
 
 void can_drv_rxed(can_msg_t *msg)
 {
+#ifdef USE_SLCAN
+	msg->ts = frame_cnt_ms;
+	static uint8_t slcan_buf[32];
+	int len = slcan_frame2buf(slcan_buf, msg);
+	usbd_cdc_push_data(slcan_buf, len);
+#else
 	usbd_cdc_push_data((uint8_t *)msg, sizeof(can_msg_t));
+#endif
 	led_amnt[LED_RX] = 1.0f;
 }

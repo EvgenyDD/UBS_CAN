@@ -21,11 +21,11 @@ void can_drv_init(CAN_TypeDef *dev)
 	GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
-void can_drv_leave_init_mode(CAN_TypeDef *dev)
+void can_drv_leave_init_mode(CAN_TypeDef *dev, bool silent, bool loopback)
 {
 	uint32_t reg = dev->BTR;
-	reg &= ~CAN_BTR_SILM;
-	reg &= ~CAN_BTR_LBKM;
+	silent ? (reg |= CAN_BTR_SILM) : (reg &= ~CAN_BTR_SILM);
+	loopback ? (reg |= CAN_BTR_LBKM) : (reg &= ~CAN_BTR_LBKM);
 	dev->BTR = reg;
 	dev->MCR &= (uint32_t)~CAN_MCR_INRQ;
 	while((dev->MSR & CAN_MSR_INAK) != 0U)
@@ -172,7 +172,7 @@ void can_drv_get_rx_data(CAN_TypeDef *dev, uint8_t *data)
 
 void can_drv_release_rx_message(CAN_TypeDef *dev) { dev->RF0R = CAN_RF0R_RFOM0; }
 
-bool can_drv_tx(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d)
+int can_drv_tx(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d)
 {
 	uint32_t txmb;
 	if((dev->TSR & CAN_TSR_TME0) == CAN_TSR_TME0)
@@ -189,7 +189,7 @@ bool can_drv_tx(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d)
 	}
 	else
 	{
-		return false;
+		return 1;
 	}
 
 	dev->sTxMailBox[txmb].TIR &= CAN_TI0R_TXRQ;
@@ -209,10 +209,10 @@ bool can_drv_tx(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d)
 
 	dev->sTxMailBox[txmb].TIR |= CAN_TI0R_TXRQ;
 	can_drv_txed();
-	return true;
+	return 0;
 }
 
-bool can_drv_tx_ex(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d, bool is_ext, bool is_rtr)
+int can_drv_tx_ex(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d, bool is_ext, bool is_rtr)
 {
 	uint32_t txmb;
 	if((dev->TSR & CAN_TSR_TME0) == CAN_TSR_TME0)
@@ -229,7 +229,7 @@ bool can_drv_tx_ex(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d, bo
 	}
 	else
 	{
-		return false;
+		return 1;
 	}
 
 	dev->sTxMailBox[txmb].TIR &= CAN_TI0R_TXRQ;
@@ -251,7 +251,7 @@ bool can_drv_tx_ex(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d, bo
 
 	dev->sTxMailBox[txmb].TIR |= CAN_TI0R_TXRQ;
 	can_drv_txed();
-	return true;
+	return 0;
 }
 
 bool can_drv_is_transmitting(CAN_TypeDef *dev)

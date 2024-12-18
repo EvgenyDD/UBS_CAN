@@ -22,7 +22,7 @@ typedef struct __attribute__((packed))
 } can_msg_t;
 
 void can_drv_init(CAN_TypeDef *dev);
-void can_drv_leave_init_mode(CAN_TypeDef *dev);
+void can_drv_leave_init_mode(CAN_TypeDef *dev, bool silent, bool loopback);
 void can_drv_enter_init_mode(CAN_TypeDef *dev);
 void can_drv_start(CAN_TypeDef *dev);
 int32_t can_drv_check_set_bitrate(CAN_TypeDef *dev, int32_t bit_rate, bool is_set);
@@ -38,8 +38,8 @@ uint32_t can_drv_get_rx_ident(CAN_TypeDef *dev);
 int can_drv_get_rx_dlc(CAN_TypeDef *dev);
 void can_drv_get_rx_data(CAN_TypeDef *dev, uint8_t *data);
 void can_drv_release_rx_message(CAN_TypeDef *dev);
-bool can_drv_tx(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d);
-bool can_drv_tx_ex(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d, bool is_ext, bool is_rtr);
+int can_drv_tx(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d);
+int can_drv_tx_ex(CAN_TypeDef *dev, uint32_t ident, uint8_t dlc, uint8_t *d, bool is_ext, bool is_rtr);
 void can_drv_tx_abort(CAN_TypeDef *dev);
 bool can_drv_is_transmitting(CAN_TypeDef *dev);
 uint32_t can_drv_is_message_sent(CAN_TypeDef *dev);

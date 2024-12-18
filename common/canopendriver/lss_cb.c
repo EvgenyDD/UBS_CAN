@@ -11,7 +11,7 @@ static void set_br(void *obj /* LSS_cb_obj_t* */)
 {
 	can_drv_enter_init_mode(((LSS_cb_obj_t *)obj)->co->CANmodule->CANptr);
 	can_drv_check_set_bitrate(((LSS_cb_obj_t *)obj)->co->CANmodule->CANptr, (int32_t)(*((LSS_cb_obj_t *)obj)->co->LSSslave->pendingBitRate) * 1000, true);
-	can_drv_leave_init_mode(((LSS_cb_obj_t *)obj)->co->CANmodule->CANptr);
+	can_drv_leave_init_mode(((LSS_cb_obj_t *)obj)->co->CANmodule->CANptr, 0, 0);
 }
 
 static bool_t lss_check_br(void *obj /* LSS_cb_obj_t* */, uint16_t bitRate)

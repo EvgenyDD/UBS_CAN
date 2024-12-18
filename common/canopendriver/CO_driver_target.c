@@ -10,7 +10,7 @@ void CO_CANsetConfigurationMode(void *CANptr)
 
 void CO_CANsetNormalMode(CO_CANmodule_t *CANmodule)
 {
-	can_drv_leave_init_mode((CAN_TypeDef *)CANmodule->CANptr);
+	can_drv_leave_init_mode((CAN_TypeDef *)CANmodule->CANptr, 0, 0);
 	CANmodule->CANnormal = true;
 }
 
@@ -173,7 +173,7 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 	CO_LOCK_CAN_SEND(CANmodule);
 	CAN_TypeDef *dev = (CAN_TypeDef *)CANmodule->CANptr;
 	/* if CAN TX buffer is free, copy message to it */
-	if(can_drv_tx(dev, buffer->ident, buffer->DLC, buffer->data) > 0 &&
+	if(can_drv_tx(dev, buffer->ident, buffer->DLC, buffer->data) == 0 &&
 	   CANmodule->CANtxCount == 0)
 	{
 		CANmodule->bufferInhibitFlag = buffer->syncFlag;
