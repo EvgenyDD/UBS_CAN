@@ -8,6 +8,10 @@
 #define RET_ACK "\a"
 #define RET_NACK "\r"
 
+#define SLCAN_BUFFER_SIZE 200
+static uint8_t buf_[SLCAN_BUFFER_SIZE + 1];
+static int32_t pos_ = 0;
+
 static struct
 {
 	bool silent;
@@ -96,9 +100,8 @@ static int cb_frm_rtr_std(CAN_TypeDef *dev, const char *cmd, uint32_t size)
 	return can_drv_tx_ex(dev, msg.id.std, msg.DLC, msg.data, false, true);
 }
 
-const char *slcan_parse(CAN_TypeDef *dev, const uint8_t *data, uint32_t size)
+static const char *process(CAN_TypeDef *dev, const uint8_t *data, uint32_t size)
 {
-	if(size == 0) return NULL;
 	switch(data[0])
 	{
 	case 'T': return cb_frm_data_ext(dev, &data[0], size) ? RET_NACK : RET_ACK;
@@ -200,6 +203,44 @@ const char *slcan_parse(CAN_TypeDef *dev, const uint8_t *data, uint32_t size)
 	}
 }
 
+const char *slcan_parse(CAN_TypeDef *dev, const uint8_t *data, uint32_t size)
+{
+	if(size == 0) return NULL;
+	const char *resp = NULL;
+
+	for(uint32_t i = 0; i < size; i++)
+	{
+		if(data[i] >= 32 && data[i] <= 126)
+		{
+			if(pos_ < SLCAN_BUFFER_SIZE)
+			{
+				buf_[pos_] = data[i];
+				pos_++;
+			}
+			else
+			{
+				pos_ = 0; // overrun; silently drop the data
+			}
+		}
+		else if(data[i] == '\r') // End of command (SLCAN)
+		{
+			buf_[pos_] = '\0';
+			resp = process(dev, buf_, pos_);
+			pos_ = 0;
+		}
+		else if(data[i] == 8 || data[i] == 127) // DEL or BS
+		{
+			if(pos_ > 0) pos_ -= 1;
+		}
+		else
+		{
+			pos_ = 0; // invalid byte - drop the current command, this also includes Ctrl+C, Ctrl+D
+		}
+	}
+
+	return resp;
+}
+
 int slcan_frame2buf(uint8_t buf[32], const can_msg_t *msg)
 {
 	uint8_t *p = buf;
@@ -244,8 +285,7 @@ int slcan_frame2buf(uint8_t buf[32], const can_msg_t *msg)
 		*p++ = nibble2hex(msg->ts >> 4);
 		*p++ = nibble2hex(msg->ts >> 0);
 	}
-	*p++ = '\a';
-	*p++ = 0;
+	*p++ = '\r';
 
 	return p - buf;
 }

@@ -21,6 +21,8 @@ __ALIGN_BEGIN static uint8_t cdc_rx_buf[CDC_DATA_MAX_PACKET_SIZE] __ALIGN_END; /
 __ALIGN_BEGIN static uint8_t cdc_tx_buf[APP_RX_DATA_SIZE] __ALIGN_END;
 static uint32_t cdc_tx_buf_len = 0;
 
+static volatile bool ep_tx = false;
+
 static uint32_t tx_push_ptr = 0; // app -> CDC
 static uint32_t tx_pop_ptr = 0;	 // app -> CDC
 
@@ -169,6 +171,7 @@ uint8_t usbd_cdc_setup(void *pdev, USB_SETUP_REQ *req)
 
 uint8_t usbd_cdc_data_in(void *pdev, uint8_t epnum)
 {
+	ep_tx = false;
 	if(cdc_tx_state == USB_CDC_BUSY)
 	{
 		if(cdc_tx_buf_len == 0)
@@ -197,6 +200,7 @@ uint8_t usbd_cdc_data_in(void *pdev, uint8_t epnum)
 				if(tx_size == CDC_DATA_IN_PACKET_SIZE) cdc_tx_state = USB_CDC_ZLP;
 			}
 
+			ep_tx = true;
 			DCD_EP_Tx(pdev, CDC_IN_EP, &cdc_tx_buf[tx_ptr], tx_size); // prepare the available data buffer to be sent on IN endpoint
 			return USBD_OK;
 		}
@@ -204,6 +208,7 @@ uint8_t usbd_cdc_data_in(void *pdev, uint8_t epnum)
 
 	if(cdc_tx_state == USB_CDC_ZLP) // avoid any asynchronous transfer during ZLP
 	{
+		ep_tx = true;
 		DCD_EP_Tx(pdev, CDC_IN_EP, NULL, 0); // send ZLP to indicate the end of the current transfer
 		cdc_tx_state = USB_CDC_IDLE;
 	}
@@ -213,18 +218,12 @@ uint8_t usbd_cdc_data_in(void *pdev, uint8_t epnum)
 
 int usbd_cdc_push_data(const uint8_t *data, uint32_t size)
 {
-	int count = 0;
 	for(uint32_t i = 0; i < size; i++)
 	{
 		cdc_tx_buf[tx_push_ptr++] = data[i];
-		count++;
-		if(tx_push_ptr == APP_RX_DATA_SIZE)
-		{
-			tx_push_ptr = 0;
-			count = 0;
-		}
+		if(tx_push_ptr == APP_RX_DATA_SIZE) tx_push_ptr = 0;
 	}
-	return count;
+	return 0;
 }
 
 uint8_t usbd_cdc_data_out(void *pdev, uint8_t epnum)
@@ -237,6 +236,7 @@ uint8_t usbd_cdc_data_out(void *pdev, uint8_t epnum)
 
 static void handle_usb_async_xfer(void *pdev)
 {
+	if(ep_tx) return;
 	if(lock_cdc_tx == false && cdc_tx_state == USB_CDC_IDLE)
 	{
 		if(tx_pop_ptr == APP_RX_DATA_SIZE) tx_pop_ptr = 0;
@@ -267,19 +267,15 @@ static void handle_usb_async_xfer(void *pdev)
 			cdc_tx_buf_len = 0;
 			cdc_tx_state = tx_size == CDC_DATA_IN_PACKET_SIZE ? USB_CDC_ZLP : USB_CDC_BUSY;
 		}
+
+		ep_tx = true;
 		DCD_EP_Tx(pdev, CDC_IN_EP, &cdc_tx_buf[tx_ptr], tx_size);
 	}
 }
 
 uint8_t usbd_cdc_sof(void *pdev)
 {
-	static uint32_t frame_count = 0;
-
-	if(++frame_count == CDC_IN_FRAME_INTERVAL)
-	{
-		frame_count = 0;
-		handle_usb_async_xfer(pdev); // check the data to be sent through IN pipe
-	}
+	handle_usb_async_xfer(pdev); // check the data to be sent through IN pipe
 	return USBD_OK;
 }
 

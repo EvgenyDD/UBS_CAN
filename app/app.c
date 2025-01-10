@@ -25,7 +25,7 @@ int gsts = -10;
 #define SYSTICK_IN_US (168000000 / 1000000)
 #define SYSTICK_IN_MS (168000000 / 1000)
 
-#define LED_DECIM 0.005f
+#define LED_DECIM 0.01f
 
 #define NMT_CONTROL                  \
 	(CO_NMT_STARTUP_TO_OPERATIONAL | \
@@ -180,7 +180,7 @@ void main(void)
 				if(diff_ms)
 				{
 					led_amnt[LED_TX] -= diff_ms * LED_DECIM;
-					led_amnt[LED_RX] -= diff_ms * LED_DECIM;
+					led_amnt[LED_RX] -= diff_ms * LED_DECIM * .5f;
 					if(led_amnt[LED_TX] < 0) led_amnt[LED_TX] = 0;
 					if(led_amnt[LED_RX] < 0) led_amnt[LED_RX] = 0;
 				}
@@ -212,18 +212,18 @@ void usbd_cdc_rx(const uint8_t *data, uint32_t size)
 
 void can_drv_txed(void)
 {
-	led_amnt[LED_TX] = 1.0f;
+	if(led_amnt[LED_TX] < 0.05f) led_amnt[LED_TX] = 1.0f;
 }
 
 void can_drv_rxed(can_msg_t *msg)
 {
 #ifdef USE_SLCAN
 	msg->ts = frame_cnt_ms;
-	static uint8_t slcan_buf[32];
+	static uint8_t slcan_buf[64];
 	int len = slcan_frame2buf(slcan_buf, msg);
 	usbd_cdc_push_data(slcan_buf, len);
 #else
 	usbd_cdc_push_data((uint8_t *)msg, sizeof(can_msg_t));
 #endif
-	led_amnt[LED_RX] = 1.0f;
+	if(led_amnt[LED_RX] < 0.025f) led_amnt[LED_RX] = 0.5f; // blue led is too strong
 }
