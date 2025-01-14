@@ -198,8 +198,8 @@ PLATFORM_RESET:
 void usbd_cdc_rx(const uint8_t *data, uint32_t size)
 {
 #ifdef USE_SLCAN
-	const char *ret = slcan_parse(CO->CANmodule->CANptr, data, size);
-	if(ret) usbd_cdc_push_data((const uint8_t *)ret, strlen(ret));
+	const uint8_t *ret = slcan_parse(CO->CANmodule->CANptr, data, size);
+	if(ret) usbd_cdc_push_data(ret, strlen((const char *)ret));
 #else
 	if(size == sizeof(can_msg_t))
 	{

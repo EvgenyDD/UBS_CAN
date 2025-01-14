@@ -5,8 +5,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define RET_ACK "\a"
-#define RET_NACK "\r"
+#define RET_ACK (const uint8_t *)"\a"
+#define RET_NACK (const uint8_t *)"\r"
 
 #define SLCAN_BUFFER_SIZE 200
 static uint8_t buf_[SLCAN_BUFFER_SIZE + 1];
@@ -31,7 +31,7 @@ static uint8_t hex2nibble(char c, bool *e)
 	return 0;
 }
 
-static int cb_frm_data_ext(CAN_TypeDef *dev, const char *cmd, uint32_t size)
+static int cb_frm_data_ext(CAN_TypeDef *dev, const uint8_t *cmd, uint32_t size)
 {
 	can_msg_t msg;
 	bool e = false;
@@ -41,7 +41,7 @@ static int cb_frm_data_ext(CAN_TypeDef *dev, const char *cmd, uint32_t size)
 	if(e || msg.DLC > 8) return -1;
 	if(size < 10U + 2 * msg.DLC) return -2;
 
-	const char *p = &cmd[10];
+	const uint8_t *p = &cmd[10];
 	for(unsigned i = 0; i < msg.DLC; i++)
 	{
 		msg.data[i] = (hex2nibble(*p, &e) << 4) | hex2nibble(*(p + 1), &e);
@@ -52,7 +52,7 @@ static int cb_frm_data_ext(CAN_TypeDef *dev, const char *cmd, uint32_t size)
 	return can_drv_tx_ex(dev, msg.id.ext, msg.DLC, msg.data, true, false);
 }
 
-static int cb_frm_data_std(CAN_TypeDef *dev, const char *cmd, uint32_t size)
+static int cb_frm_data_std(CAN_TypeDef *dev, const uint8_t *cmd, uint32_t size)
 {
 	can_msg_t msg;
 	bool e = false;
@@ -62,7 +62,7 @@ static int cb_frm_data_std(CAN_TypeDef *dev, const char *cmd, uint32_t size)
 	if(msg.DLC > 8) return -2;
 	if(size < 5U + 2 * msg.DLC) return -3;
 
-	const char *p = &cmd[5];
+	const uint8_t *p = &cmd[5];
 	for(unsigned i = 0; i < msg.DLC; i++)
 	{
 		msg.data[i] = (hex2nibble(*p, &e) << 4) | hex2nibble(*(p + 1), &e);
@@ -73,7 +73,7 @@ static int cb_frm_data_std(CAN_TypeDef *dev, const char *cmd, uint32_t size)
 	return can_drv_tx_ex(dev, msg.id.std, msg.DLC, msg.data, false, false);
 }
 
-static int cb_frm_rtr_ext(CAN_TypeDef *dev, const char *cmd, uint32_t size)
+static int cb_frm_rtr_ext(CAN_TypeDef *dev, const uint8_t *cmd, uint32_t size)
 {
 	can_msg_t msg;
 	bool e = false;
@@ -87,7 +87,7 @@ static int cb_frm_rtr_ext(CAN_TypeDef *dev, const char *cmd, uint32_t size)
 	return can_drv_tx_ex(dev, msg.id.ext, msg.DLC, msg.data, true, true);
 }
 
-static int cb_frm_rtr_std(CAN_TypeDef *dev, const char *cmd, uint32_t size)
+static int cb_frm_rtr_std(CAN_TypeDef *dev, const uint8_t *cmd, uint32_t size)
 {
 	can_msg_t msg;
 	bool e = false;
@@ -100,7 +100,7 @@ static int cb_frm_rtr_std(CAN_TypeDef *dev, const char *cmd, uint32_t size)
 	return can_drv_tx_ex(dev, msg.id.std, msg.DLC, msg.data, false, true);
 }
 
-static const char *process(CAN_TypeDef *dev, const uint8_t *data, uint32_t size)
+static const uint8_t *process(CAN_TypeDef *dev, const uint8_t *data, uint32_t size)
 {
 	switch(data[0])
 	{
@@ -203,10 +203,10 @@ static const char *process(CAN_TypeDef *dev, const uint8_t *data, uint32_t size)
 	}
 }
 
-const char *slcan_parse(CAN_TypeDef *dev, const uint8_t *data, uint32_t size)
+const uint8_t *slcan_parse(CAN_TypeDef *dev, const uint8_t *data, uint32_t size)
 {
 	if(size == 0) return NULL;
-	const char *resp = NULL;
+	const uint8_t *resp = NULL;
 
 	for(uint32_t i = 0; i < size; i++)
 	{
